@@ -2,67 +2,51 @@
 % Image Processing Final Project
 % Submitted by: Marc Olata and Job Isaac Ong (TN36)
 %
-% This script processes two images:
-%   1) "birdies.jpg" (object of interest: birds) 
-%      - Birds are turned red.
-%   2) "doggo.jpg" (object of interest: dog)
-%      - The dog is turned yellow.
+% This script processes three images:
+%   1) Bird Image ("birdies.jpg")
+%       - Outputs: Original, HSV, YCbCr, Sobel/Prewitt edges, enhanced edges,
+%         color segmentation mask, segmented overlay, K-means segmentation,
+%         object detection overlay (thicker boxes), birds turned red, and background blur.
 %
-% For each image, the following outputs are produced:
-%   (1) Original Image
-%   (2) HSV Image
-%   (3) YCbCr Image
-%   (4) Sobel Edges
-%   (5) Prewitt Edges
-%   (6) Enhanced (Dilated) Edges
-%   (7) (Refined) Color Segmentation Mask
-%   (8) Segmented Overlay
-%   (9) K-means Segmentation
-%   (10) Object Detection Overlay (with thicker bounding boxes)
-%   (11) Final Color Overlay (birds turned red / dog turned yellow with partial opacity)
-%   (12) Background Blurring Output
+%   2) Dog Image ("doggo.jpg")
+%       - Similar outputs as for birds, with the dog turned yellow (with partial opacity).
 %
-% Additional revisions:
-%   - Bounding boxes drawn with a thicker line.
-%   - Prewitt edge detection is added.
-%   - Background blurring is added.
+%   3) Landscape Image ("landscape.jpg")
+%       - In addition to the common outputs (original, HSV, YCbCr, edge maps, k-means segmentation, background blur),
+%         this section includes a more defined (manual) color segmentation (e.g., sky, vegetation, other)
+%         and overlays for both the defined segmentation and k-means segmentation.
 %
-% Two separate figures are created: one for "birdies.jpg" and one for "doggo.jpg".
+% Each image is processed separately and its results are displayed in a separate figure.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% ------------------- BIRD IMAGE ANALYSIS -------------------
-
-% 1) READ & RESIZE IMAGE
+%% -------------------- BIRD IMAGE ANALYSIS --------------------
+close all; clear; clc;
+%--- BIRD IMAGE ---
 originalImg = imread('birdies.jpg');
 birdImg = imresize(originalImg, [512 512]);
 grayBird = rgb2gray(birdImg);
 
-% 2) COLOR SPACE CONVERSIONS
+% COLOR SPACE CONVERSIONS
 hsvBird   = rgb2hsv(birdImg);
 ycbcrBird = rgb2ycbcr(birdImg);
 
-% 3) COLOR SEGMENTATION (RGB Example)
-% Threshold for "dark" pixels to capture bird silhouettes.
+% COLOR SEGMENTATION (RGB-based): Threshold dark pixels (silhouettes)
 R = birdImg(:,:,1);
 G = birdImg(:,:,2);
 B = birdImg(:,:,3);
 darkThreshold = 70;
 BW_bird = (R < darkThreshold) & (G < darkThreshold) & (B < darkThreshold);
 BW_bird = bwareaopen(BW_bird, 50);
-
-% Create overlay: only segmented (bird) regions remain.
 colorSegmentedOverlayBird = birdImg;
 colorSegmentedOverlayBird(repmat(~BW_bird, [1 1 3])) = 0;
 
-% 4) EDGE DETECTION
+% EDGE DETECTION
 BW_sobel_bird   = edge(grayBird, 'sobel');
 BW_prewitt_bird = edge(grayBird, 'prewitt');
-
-% 5) EDGE ENHANCEMENT (Dilation)
 se = strel('disk', 1);
 BW_sobel_dilated_bird = imdilate(BW_sobel_bird, se);
 
-% 6) K-MEANS CLUSTERING
+% K-MEANS CLUSTERING
 numClusters = 3;
 [m, n, c] = size(birdImg);
 pixelData = double(reshape(birdImg, [], c));
@@ -86,10 +70,9 @@ for i = 1:numClusters
     end
 end
 
-% 7) OBJECT DETECTION & THICKER BOUNDING BOXES
+% OBJECT DETECTION (Thicker bounding boxes via insertShape)
 CC = bwconncomp(BW_bird);
 stats = regionprops(CC, 'BoundingBox', 'Centroid');
-% Use insertShape to draw thicker boxes:
 rectangles = [];
 for k = 1:length(stats)
     rectangles = [rectangles; stats(k).BoundingBox];
@@ -106,7 +89,7 @@ if ~isempty(centroids)
     objectDetectionOverlayBird = insertMarker(objectDetectionOverlayBird, centroids, 'x', 'Color', 'red', 'Size', 10);
 end
 
-% 8) TURN THE BIRDS RED (Full replacement in mask)
+% TURN THE BIRDS RED (Full replacement on mask)
 birdsRedOverlay = birdImg;
 Rchan = birdsRedOverlay(:,:,1);
 Gchan = birdsRedOverlay(:,:,2);
@@ -118,13 +101,13 @@ birdsRedOverlay(:,:,1) = Rchan;
 birdsRedOverlay(:,:,2) = Gchan;
 birdsRedOverlay(:,:,3) = Bchan;
 
-% 9) BACKGROUND BLURRING: Blur background while keeping the object sharp
+% BACKGROUND BLURRING
 blurredBird = imgaussfilt(birdImg, 10);
 birdBackgroundBlurred = birdImg;
 birdBackgroundBlurred(~repmat(BW_bird, [1 1 3])) = blurredBird(~repmat(BW_bird, [1 1 3]));
 
-% 10) DISPLAY BIRD ANALYSIS (12 Subplots)
-figure('Name', 'Bird Image Analysis', 'Position', [50 50 1400 900]);
+% DISPLAY: 12 subplots for Bird Analysis
+figure('Name','Bird Image Analysis','Position',[50 50 1400 900]);
 subplot(3,4,1), imshow(birdImg), title('Original Image');
 subplot(3,4,2), imshow(hsvBird), title('HSV Image');
 subplot(3,4,3), imshow(ycbcrBird), title('YCbCr Image');
@@ -138,19 +121,17 @@ subplot(3,4,10), imshow(objectDetectionOverlayBird), title('Object Detection');
 subplot(3,4,11), imshow(birdsRedOverlay), title('Birds Turned Red');
 subplot(3,4,12), imshow(birdBackgroundBlurred), title('Background Blurred');
 
-%% ------------------- DOG IMAGE ANALYSIS -------------------
-
-% 1) READ & RESIZE IMAGE
-originalDog = imread('dog.jpg');
+%% -------------------- DOG IMAGE ANALYSIS --------------------
+%--- DOG IMAGE ---
+originalDog = imread('dog.jpg');  % or "dog.jpg" as appropriate
 dogImg = imresize(originalDog, [512 512]);
 grayDog = rgb2gray(dogImg);
 
-% 2) COLOR SPACE CONVERSIONS
+% COLOR SPACE CONVERSIONS
 hsvDog   = rgb2hsv(dogImg);
 ycbcrDog = rgb2ycbcr(dogImg);
 
-% 3) REFINED COLOR SEGMENTATION
-% Exclude strongly green areas (grass)
+% REFINED COLOR SEGMENTATION: Exclude strongly green (grass)
 R = dogImg(:,:,1);
 G = dogImg(:,:,2);
 B = dogImg(:,:,3);
@@ -168,15 +149,13 @@ end
 colorSegmentedOverlayDog = dogImg;
 colorSegmentedOverlayDog(repmat(~BW_dog, [1 1 3])) = 0;
 
-% 4) EDGE DETECTION
+% EDGE DETECTION
 BW_sobel_dog   = edge(grayDog, 'sobel');
 BW_prewitt_dog = edge(grayDog, 'prewitt');
-
-% 5) EDGE ENHANCEMENT (Dilation)
 se = strel('disk',1);
 BW_sobel_dog_dilated = imdilate(BW_sobel_dog, se);
 
-% 6) K-MEANS CLUSTERING
+% K-MEANS CLUSTERING
 numClusters = 3;
 [m, n, c] = size(dogImg);
 pixelData = double(reshape(dogImg, [], c));
@@ -200,7 +179,7 @@ for i = 1:numClusters
     end
 end
 
-% 7) OBJECT DETECTION & THICKER BOUNDING BOXES (Dog)
+% OBJECT DETECTION (Thicker bounding boxes)
 CC = bwconncomp(BW_dog);
 stats = regionprops(CC, 'BoundingBox', 'Centroid');
 rectangles = [];
@@ -219,24 +198,22 @@ if ~isempty(centroids)
     objectDetectionOverlayDog = insertMarker(objectDetectionOverlayDog, centroids, 'x', 'Color', 'red', 'Size', 10);
 end
 
-% 8) CHANGE DOG'S COLOR TO YELLOW (with partial opacity)
+% TURN THE DOG YELLOW (with partial opacity)
 alpha = 0.7;
 dogYellowOverlay = im2double(dogImg);
 yellowOverlay = ones(size(dogImg));
-yellowOverlay(:,:,1) = 1;
-yellowOverlay(:,:,2) = 1;
-yellowOverlay(:,:,3) = 0;
+yellowOverlay(:,:,1) = 1; yellowOverlay(:,:,2) = 1; yellowOverlay(:,:,3) = 0;
 mask = repmat(BW_dog, [1 1 3]);
 dogYellowOverlay(mask) = alpha * yellowOverlay(mask) + (1 - alpha) * dogYellowOverlay(mask);
 dogYellowOverlay = im2uint8(dogYellowOverlay);
 
-% 9) BACKGROUND BLURRING (Dog)
+% BACKGROUND BLURRING
 blurredDog = imgaussfilt(dogImg, 10);
 dogBackgroundBlurred = dogImg;
 dogBackgroundBlurred(~repmat(BW_dog, [1 1 3])) = blurredDog(~repmat(BW_dog, [1 1 3]));
 
-% 10) DISPLAY DOG ANALYSIS (12 Subplots)
-figure('Name', 'Dog Image Analysis', 'Position', [100 100 1400 900]);
+% DISPLAY: 12 subplots for Dog Analysis
+figure('Name','Dog Image Analysis','Position',[100 100 1400 900]);
 subplot(3,4,1), imshow(dogImg), title('Original Image');
 subplot(3,4,2), imshow(hsvDog), title('HSV Image');
 subplot(3,4,3), imshow(ycbcrDog), title('YCbCr Image');
@@ -250,7 +227,106 @@ subplot(3,4,10), imshow(objectDetectionOverlayDog), title('Object Detection');
 subplot(3,4,11), imshow(dogYellowOverlay), title('Dog Turned Yellow');
 subplot(3,4,12), imshow(dogBackgroundBlurred), title('Background Blurred');
 
+%% -------------------- LANDSCAPE IMAGE ANALYSIS --------------------
+%--- LANDSCAPE IMAGE ---
+landscape = imread('landscape.jpg');
+% Optionally resize if desired:
+landscape = imresize(landscape, [512 512]);
+
+% COLOR SPACE CONVERSIONS
+hsvLand = rgb2hsv(landscape);
+ycbcrLand = rgb2ycbcr(landscape);
+
+% EDGE DETECTION
+grayLand = rgb2gray(landscape);
+BW_sobel_land = edge(grayLand, 'sobel');
+BW_prewitt_land = edge(grayLand, 'prewitt');
+se = strel('disk', 1);
+BW_sobel_dilated_land = imdilate(BW_sobel_land, se);
+
+% (A) Defined Color Segmentation in HSV
+% Example thresholds for a typical landscape:
+%   Let's assume: sky is blue (H between 0.5 and 0.7, low S), vegetation is green (H between 0.20 and 0.40)
+skyMask = (hsvLand(:,:,1) >= 0.5 & hsvLand(:,:,1) <= 0.7) & (hsvLand(:,:,2) <= 0.3) & (hsvLand(:,:,3) >= 0.5);
+vegMask = (hsvLand(:,:,1) >= 0.20 & hsvLand(:,:,1) <= 0.40) & (hsvLand(:,:,2) >= 0.2) & (hsvLand(:,:,3) >= 0.2);
+labelsDefined = zeros(size(skyMask)); 
+labelsDefined(skyMask) = 1;   % label 1 = sky
+labelsDefined(vegMask) = 2;   % label 2 = vegetation
+% The rest remain label 0 (other)
+
+% Build a defined color segmentation overlay:
+segDefined = zeros(size(landscape), 'uint8');
+% Map: 0-> [255,0,0] (red for other), 1-> [0,0,255] (blue for sky), 2-> [0,255,0] (green for vegetation)
+colorMap = [255 0 0; 0 0 255; 0 255 0];
+for lbl = 0:2
+    mask = (labelsDefined == lbl);
+    for ch = 1:3
+        segDefined(:,:,ch) = segDefined(:,:,ch) + uint8(mask)*colorMap(lbl+1,ch);
+    end
+end
+
+% (B) K-means Clustering on Landscape
+[mL, nL, cL] = size(landscape);
+imgDouble = im2double(landscape);
+pixelDataL = reshape(imgDouble, [mL*nL, cL]);
+numClustersLand = 4;
+[idxL, ~] = kmeans(pixelDataL, numClustersLand, 'Distance','sqEuclidean','Replicates',3);
+pixelLabelsL = reshape(idxL, [mL, nL]);
+cleanedLabelsL = zeros(size(pixelLabelsL));
+for i = 1:numClustersLand
+    clusterMask = (pixelLabelsL == i);
+    clusterMask = bwareaopen(clusterMask, 50);
+    cleanedLabelsL(clusterMask) = i;
+end
+pixelLabelsL = cleanedLabelsL;
+clusteredImgLand = zeros(mL, nL, 3, 'uint8');
+clusterColors = uint8(255 * lines(numClustersLand));
+for i = 1:numClustersLand
+    mask = (pixelLabelsL == i);
+    for ch = 1:3
+        temp = clusteredImgLand(:,:,ch);
+        temp(mask) = clusterColors(i,ch);
+        clusteredImgLand(:,:,ch) = temp;
+    end
+end
+
+% (C) Overlays: Blend defined segmentation and K-means with original
+alpha = 0.5;
+overlayDefined = im2double(landscape);
+for ch = 1:3
+    overlayDefined(:,:,ch) = (1 - alpha)*overlayDefined(:,:,ch) + alpha*(im2double(segDefined(:,:,ch)));
+end
+overlayDefined = im2uint8(overlayDefined);
+
+overlayKmeans = im2double(landscape);
+for ch = 1:3
+    overlayKmeans(:,:,ch) = (1 - alpha)*overlayKmeans(:,:,ch) + alpha*(im2double(clusteredImgLand(:,:,ch)));
+end
+overlayKmeans = im2uint8(overlayKmeans);
+
+% BACKGROUND BLURRING for Landscape
+blurredLand = imgaussfilt(landscape, 10);
+% Blend the original and blurred image with an alpha factor of 0.5:
+landBackgroundBlurred = im2uint8((im2double(landscape) + im2double(blurredLand)) / 2);
+
+% If imblend is not available, we can do:
+landBackgroundBlurred = im2uint8((im2double(landscape) + im2double(blurredLand))/2);
+
+% DISPLAY: 12 subplots for Landscape Analysis
+figure('Name','Landscape Image Analysis','Position',[150 150 1400 900]);
+subplot(3,4,1), imshow(landscape), title('Original Image');
+subplot(3,4,2), imshow(hsvLand), title('HSV Image');
+subplot(3,4,3), imshow(ycbcrLand), title('YCbCr Image');
+subplot(3,4,4), imshow(BW_sobel_land), title('Sobel Edges');
+subplot(3,4,5), imshow(BW_prewitt_land), title('Prewitt Edges');
+subplot(3,4,6), imshow(BW_sobel_dilated_land), title('Enhanced Edges');
+subplot(3,4,7), imshow(segDefined), title('Defined Color Segmentation');
+subplot(3,4,8), imshow(overlayDefined), title('Overlay: Original + Defined');
+subplot(3,4,9), imshow(clusteredImgLand), title('K-means Segmentation');
+subplot(3,4,10), imshow(overlayKmeans), title('Overlay: Original + K-means');
+subplot(3,4,11), imshow(landBackgroundBlurred), title('Background Blurred');
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % END OF SCRIPT
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
