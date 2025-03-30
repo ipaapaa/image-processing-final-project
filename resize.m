@@ -20,7 +20,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% -------------------- BIRD IMAGE ANALYSIS -----------s---------
-close all; clear; clc;
+
 set(0, 'DefaultFigureWindowStyle', 'normal');
 set(0, 'DefaultFigurePosition', [100, 50, 1000, 700]);
 %--- BIRD IMAGE ---
@@ -353,7 +353,6 @@ subplot(3,4,11), imshow(landBackgroundBlurred), title('Background Blurred');
 %   - Ensure "car.jpg" is in your working directory or path.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-close all; clear; clc;
 
 %% 1) READ & RESIZE
 originalCar = imread('car.jpg');
@@ -573,7 +572,6 @@ title('End of Demo');
 %   - Ensure "fruit.jpg" (or your actual filename) is in your path.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-close all; clear; clc;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Fruit Image Analysis (Further Refined for the Yellow Pear)
@@ -595,7 +593,7 @@ close all; clear; clc;
 %   - Ensure "fruit.jpg" (or your actual filename) is in your path.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-close all; clear; clc;
+
 
 %% 1) READ & RESIZE IMAGE
 originalImg = imread('fruits.jpg');  % Replace with your actual filename
@@ -777,15 +775,6 @@ title('Object Detection');
 subplot(3,4,11);
 imshow(pearRedOverlay);
 title('Pear Turned Red');
-
-% (12) Background Blurred
-subplot(3,4,12);
-imshow(fruitBackgroundBlurred);
-title('Background Blurred');
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% END OF SCRIPT
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 
