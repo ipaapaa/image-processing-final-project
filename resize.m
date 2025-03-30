@@ -334,23 +334,22 @@ subplot(3,4,11), imshow(landBackgroundBlurred), title('Background Blurred');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Car Image Analysis (Top-Hat Approach for Difficult Road/Car Segmentation)
-%
-% 1) Preprocessing (read, resize)
-% 2) Top-Hat Filtering in Grayscale
-% 3) Threshold + Morphological Cleanup => Car Mask
-% 4) Edge Detection (Sobel, Prewitt) + Dilation
-% 5) K-means Clustering
-% 6) Object Detection (Connected Components) + Thicker Boxes
-% 7) Cars Turned Red (Overlay)
-% 8) Background Blurring
-% 9) Single-Figure Visualization
+% Car Image Analysis (Top-Hat + Shape Filtering)
+% 
+% 1) Read & Resize
+% 2) Top-Hat Filtering
+% 3) Threshold + Morphological Cleanup
+% 4) Shape-Based Filtering (Remove elongated, thin objects)
+% 5) Edge Detection (Sobel, Prewitt) + Dilation
+% 6) K-means Clustering
+% 7) Object Detection + Thicker Boxes
+% 8) Cars Turned Red
+% 9) Background Blurring
+% 10) Single-Figure Visualization
 %
 % NOTE:
-%   - The top-hat filter size, threshold, and morphological steps
-%     should be tuned for your specific road/car image.
-%   - If cars are darker than the road, consider a bottom-hat approach
-%     or invert the image.
+%   - Adjust 'seSize', 'thVal', morphological parameters, and 
+%     shape-based filtering thresholds for best results.
 %   - Ensure "car.jpg" is in your working directory or path.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -360,45 +359,61 @@ close all; clear; clc;
 originalCar = imread('car.jpg');
 carImg = imresize(originalCar, [512 512]);
 
-% Convert to grayscale for top-hat
 grayCar = rgb2gray(carImg);
 
 %% 2) TOP-HAT FILTERING
-% The top-hat operation extracts bright objects from an uneven background.
-% Choose a structuring element size large enough to approximate the road's background.
-seSize = 20;  % try adjusting between 15–30, or more, depending on car size
+% The top-hat operation highlights objects brighter than the local background.
+% Increase 'seSize' if cars are large or the road is more uneven.
+seSize = 20;  
 se = strel('disk', seSize);
 
-% Perform top-hat: highlights regions brighter than the surrounding background
 topHatImg = imtophat(grayCar, se);
+topHatImg = imadjust(topHatImg);  % enhance contrast
 
-% (Optional) Enhance contrast of topHatImg to make thresholding easier
-topHatImg = imadjust(topHatImg);
-
-%% 3) THRESHOLD & MORPHOLOGY
-% Choose a threshold that captures the bright or midtone cars
-% The exact value is image-dependent. Adjust as needed.
-thVal = 0.15;  % in [0,1] after imadjust
+%% 3) THRESHOLD & MORPHOLOGICAL CLEANUP
+% Adjust 'thVal' in [0,1] for your image
+thVal = 0.15;  
 BW_car = imbinarize(im2double(topHatImg), thVal);
 
-% Morphological cleanup
-BW_car = imclose(BW_car, strel('disk', 5));  % unify car regions
-BW_car = imfill(BW_car, 'holes');           % fill holes inside cars
-BW_car = bwareaopen(BW_car, 200);           % remove small objects
+% Merge and clean up car regions
+BW_car = imclose(BW_car, strel('disk', 5));
+BW_car = imfill(BW_car, 'holes');
+BW_car = bwareaopen(BW_car, 200);
 
-% Create a color-segmentation overlay (only show car regions)
+%% 4) SHAPE-BASED FILTERING
+% Remove elongated, thin objects (e.g., lane markings) by checking aspect ratio
+% For each region, compute MajorAxisLength, MinorAxisLength. 
+% If aspect ratio is too large (e.g., >5), discard it.
+
+CC = bwconncomp(BW_car);
+statsAll = regionprops(CC, 'Area', 'MajorAxisLength', 'MinorAxisLength', 'PixelIdxList');
+
+BW_clean = false(size(BW_car));
+for k = 1:length(statsAll)
+    maj = statsAll(k).MajorAxisLength;
+    minr = statsAll(k).MinorAxisLength;
+    aspectRatio = maj / max(minr,1);  % avoid dividing by zero
+
+    % Example thresholds:
+    %   - Keep area > 200
+    %   - Keep aspect ratio < 5 (tweak as needed)
+    if statsAll(k).Area > 200 && aspectRatio < 5
+        BW_clean(statsAll(k).PixelIdxList) = true;
+    end
+end
+BW_car = BW_clean;
+
+% Create overlay image showing only car regions
 colorSegmentedOverlayCar = carImg;
 colorSegmentedOverlayCar(repmat(~BW_car, [1 1 3])) = 0;
 
-%% 4) EDGE DETECTION & ENHANCEMENT
+%% 5) EDGE DETECTION & ENHANCEMENT
 BW_sobel_car   = edge(grayCar, 'sobel');
 BW_prewitt_car = edge(grayCar, 'prewitt');
 
-% Dilation
-seDilate = strel('disk', 1);
-BW_sobel_car_dilated = imdilate(BW_sobel_car, seDilate);
+BW_sobel_car_dilated = imdilate(BW_sobel_car, strel('disk', 1));
 
-%% 5) K-MEANS CLUSTERING
+%% 6) K-MEANS CLUSTERING
 numClusters = 3;
 [m, n, c] = size(carImg);
 pixelData = double(reshape(carImg, [], c));
@@ -406,7 +421,7 @@ pixelData = double(reshape(carImg, [], c));
 [idx, ~] = kmeans(pixelData, numClusters, 'Distance','sqEuclidean','Replicates',3);
 pixelLabels = reshape(idx, [m, n]);
 
-% Remove small noisy regions in each cluster
+% Remove small noisy regions
 cleanedLabels = zeros(size(pixelLabels));
 for i = 1:numClusters
     clusterMask = (pixelLabels == i);
@@ -415,23 +430,22 @@ for i = 1:numClusters
 end
 pixelLabels = cleanedLabels;
 
-% Create a color-coded cluster image
+% Build color-coded cluster image
 clusteredImgCar = zeros(m, n, 3, 'uint8');
 colors = uint8(255 * lines(numClusters));
 for i = 1:numClusters
     mask = (pixelLabels == i);
     for ch = 1:3
-        temp = clusteredImgCar(:,:,ch);
-        temp(mask) = colors(i,ch);
-        clusteredImgCar(:,:,ch) = temp;
+        tmp = clusteredImgCar(:,:,ch);
+        tmp(mask) = colors(i,ch);
+        clusteredImgCar(:,:,ch) = tmp;
     end
 end
 
-%% 6) OBJECT DETECTION (Connected Components)
+%% 7) OBJECT DETECTION (Connected Components)
 CC = bwconncomp(BW_car);
 stats = regionprops(CC, 'BoundingBox', 'Centroid');
 
-% Draw thicker bounding boxes
 rectangles = [];
 for k = 1:length(stats)
     rectangles = [rectangles; stats(k).BoundingBox];
@@ -453,7 +467,7 @@ if ~isempty(centroids)
         'x', 'Color', 'red', 'Size', 10);
 end
 
-%% 7) CARS TURNED RED
+%% 8) CARS TURNED RED
 carsRedOverlay = carImg;
 Rchan = carsRedOverlay(:,:,1);
 Gchan = carsRedOverlay(:,:,2);
@@ -467,28 +481,28 @@ carsRedOverlay(:,:,1) = Rchan;
 carsRedOverlay(:,:,2) = Gchan;
 carsRedOverlay(:,:,3) = Bchan;
 
-%% 8) BACKGROUND BLURRING
+%% 9) BACKGROUND BLURRING
 blurredCar = imgaussfilt(carImg, 10);
 carBackgroundBlurred = carImg;
 carBackgroundBlurred(~repmat(BW_car, [1 1 3])) = blurredCar(~repmat(BW_car, [1 1 3]));
 
-%% 9) SINGLE-FIGURE VISUALIZATION (12 SUBPLOTS)
+%% 10) SINGLE-FIGURE VISUALIZATION (12 Subplots)
 figure('Name','Car Image Analysis','Position',[65 65 1000 700]);
 
-% (1) Original Image
+% (1) Original
 subplot(3,4,1);
 imshow(carImg);
 title('Original Image');
 
-% (2) Top-Hat Image
+% (2) Top-Hat Result
 subplot(3,4,2);
 imshow(topHatImg, []);
 title('Top-Hat Result');
 
-% (3) Color Segmentation Mask
+% (3) Mask (after shape filtering)
 subplot(3,4,3);
 imshow(BW_car);
-title('Car Mask');
+title('Car Mask (Shape Filtered)');
 
 % (4) Segmented Overlay
 subplot(3,4,4);
@@ -530,7 +544,7 @@ subplot(3,4,11);
 imshow(carBackgroundBlurred);
 title('Background Blurred');
 
-% (12) Original again or any extra step
+% (12) Original or any extra result
 subplot(3,4,12);
 imshow(carImg);
 title('End of Demo');
@@ -538,3 +552,8 @@ title('End of Demo');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % END OF SCRIPT
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+
