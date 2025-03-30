@@ -332,3 +332,209 @@ subplot(3,4,11), imshow(landBackgroundBlurred), title('Background Blurred');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % END OF SCRIPT
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Car Image Analysis (Top-Hat Approach for Difficult Road/Car Segmentation)
+%
+% 1) Preprocessing (read, resize)
+% 2) Top-Hat Filtering in Grayscale
+% 3) Threshold + Morphological Cleanup => Car Mask
+% 4) Edge Detection (Sobel, Prewitt) + Dilation
+% 5) K-means Clustering
+% 6) Object Detection (Connected Components) + Thicker Boxes
+% 7) Cars Turned Red (Overlay)
+% 8) Background Blurring
+% 9) Single-Figure Visualization
+%
+% NOTE:
+%   - The top-hat filter size, threshold, and morphological steps
+%     should be tuned for your specific road/car image.
+%   - If cars are darker than the road, consider a bottom-hat approach
+%     or invert the image.
+%   - Ensure "car.jpg" is in your working directory or path.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+close all; clear; clc;
+
+%% 1) READ & RESIZE
+originalCar = imread('car.jpg');
+carImg = imresize(originalCar, [512 512]);
+
+% Convert to grayscale for top-hat
+grayCar = rgb2gray(carImg);
+
+%% 2) TOP-HAT FILTERING
+% The top-hat operation extracts bright objects from an uneven background.
+% Choose a structuring element size large enough to approximate the road's background.
+seSize = 20;  % try adjusting between 15–30, or more, depending on car size
+se = strel('disk', seSize);
+
+% Perform top-hat: highlights regions brighter than the surrounding background
+topHatImg = imtophat(grayCar, se);
+
+% (Optional) Enhance contrast of topHatImg to make thresholding easier
+topHatImg = imadjust(topHatImg);
+
+%% 3) THRESHOLD & MORPHOLOGY
+% Choose a threshold that captures the bright or midtone cars
+% The exact value is image-dependent. Adjust as needed.
+thVal = 0.15;  % in [0,1] after imadjust
+BW_car = imbinarize(im2double(topHatImg), thVal);
+
+% Morphological cleanup
+BW_car = imclose(BW_car, strel('disk', 5));  % unify car regions
+BW_car = imfill(BW_car, 'holes');           % fill holes inside cars
+BW_car = bwareaopen(BW_car, 200);           % remove small objects
+
+% Create a color-segmentation overlay (only show car regions)
+colorSegmentedOverlayCar = carImg;
+colorSegmentedOverlayCar(repmat(~BW_car, [1 1 3])) = 0;
+
+%% 4) EDGE DETECTION & ENHANCEMENT
+BW_sobel_car   = edge(grayCar, 'sobel');
+BW_prewitt_car = edge(grayCar, 'prewitt');
+
+% Dilation
+seDilate = strel('disk', 1);
+BW_sobel_car_dilated = imdilate(BW_sobel_car, seDilate);
+
+%% 5) K-MEANS CLUSTERING
+numClusters = 3;
+[m, n, c] = size(carImg);
+pixelData = double(reshape(carImg, [], c));
+
+[idx, ~] = kmeans(pixelData, numClusters, 'Distance','sqEuclidean','Replicates',3);
+pixelLabels = reshape(idx, [m, n]);
+
+% Remove small noisy regions in each cluster
+cleanedLabels = zeros(size(pixelLabels));
+for i = 1:numClusters
+    clusterMask = (pixelLabels == i);
+    clusterMask = bwareaopen(clusterMask, 50);
+    cleanedLabels(clusterMask) = i;
+end
+pixelLabels = cleanedLabels;
+
+% Create a color-coded cluster image
+clusteredImgCar = zeros(m, n, 3, 'uint8');
+colors = uint8(255 * lines(numClusters));
+for i = 1:numClusters
+    mask = (pixelLabels == i);
+    for ch = 1:3
+        temp = clusteredImgCar(:,:,ch);
+        temp(mask) = colors(i,ch);
+        clusteredImgCar(:,:,ch) = temp;
+    end
+end
+
+%% 6) OBJECT DETECTION (Connected Components)
+CC = bwconncomp(BW_car);
+stats = regionprops(CC, 'BoundingBox', 'Centroid');
+
+% Draw thicker bounding boxes
+rectangles = [];
+for k = 1:length(stats)
+    rectangles = [rectangles; stats(k).BoundingBox];
+end
+
+objectDetectionOverlayCar = carImg;
+if ~isempty(rectangles)
+    objectDetectionOverlayCar = insertShape(carImg, 'Rectangle', rectangles, ...
+        'Color', 'green', 'LineWidth', 3);
+end
+
+% Mark centroids with red crosses
+centroids = [];
+for k = 1:length(stats)
+    centroids = [centroids; stats(k).Centroid];
+end
+if ~isempty(centroids)
+    objectDetectionOverlayCar = insertMarker(objectDetectionOverlayCar, centroids, ...
+        'x', 'Color', 'red', 'Size', 10);
+end
+
+%% 7) CARS TURNED RED
+carsRedOverlay = carImg;
+Rchan = carsRedOverlay(:,:,1);
+Gchan = carsRedOverlay(:,:,2);
+Bchan = carsRedOverlay(:,:,3);
+
+Rchan(BW_car) = 255;
+Gchan(BW_car) = 0;
+Bchan(BW_car) = 0;
+
+carsRedOverlay(:,:,1) = Rchan;
+carsRedOverlay(:,:,2) = Gchan;
+carsRedOverlay(:,:,3) = Bchan;
+
+%% 8) BACKGROUND BLURRING
+blurredCar = imgaussfilt(carImg, 10);
+carBackgroundBlurred = carImg;
+carBackgroundBlurred(~repmat(BW_car, [1 1 3])) = blurredCar(~repmat(BW_car, [1 1 3]));
+
+%% 9) SINGLE-FIGURE VISUALIZATION (12 SUBPLOTS)
+figure('Name','Car Image Analysis','Position',[65 65 1000 700]);
+
+% (1) Original Image
+subplot(3,4,1);
+imshow(carImg);
+title('Original Image');
+
+% (2) Top-Hat Image
+subplot(3,4,2);
+imshow(topHatImg, []);
+title('Top-Hat Result');
+
+% (3) Color Segmentation Mask
+subplot(3,4,3);
+imshow(BW_car);
+title('Car Mask');
+
+% (4) Segmented Overlay
+subplot(3,4,4);
+imshow(colorSegmentedOverlayCar);
+title('Segmented Overlay');
+
+% (5) Sobel Edges
+subplot(3,4,5);
+imshow(BW_sobel_car);
+title('Sobel Edges');
+
+% (6) Prewitt Edges
+subplot(3,4,6);
+imshow(BW_prewitt_car);
+title('Prewitt Edges');
+
+% (7) Enhanced Edges (Dilated)
+subplot(3,4,7);
+imshow(BW_sobel_car_dilated);
+title('Enhanced Edges');
+
+% (8) K-means Segmentation
+subplot(3,4,8);
+imshow(clusteredImgCar);
+title('K-means Segmentation');
+
+% (9) Object Detection
+subplot(3,4,9);
+imshow(objectDetectionOverlayCar);
+title('Object Detection');
+
+% (10) Cars Turned Red
+subplot(3,4,10);
+imshow(carsRedOverlay);
+title('Cars Turned Red');
+
+% (11) Background Blurred
+subplot(3,4,11);
+imshow(carBackgroundBlurred);
+title('Background Blurred');
+
+% (12) Original again or any extra step
+subplot(3,4,12);
+imshow(carImg);
+title('End of Demo');
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% END OF SCRIPT
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
