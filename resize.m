@@ -552,7 +552,240 @@ title('End of Demo');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % END OF SCRIPT
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Fruit Image Analysis (Refined for Pear Only)
+% Object of interest: The yellow pear
+%
+% Processes:
+%   1) Preprocessing (read, resize)
+%   2) Color Space Conversions (RGB->HSV, YCbCr)
+%   3) Refined Color Segmentation (Narrower HSV range + keep only largest region)
+%   4) Edge Detection (Sobel, Prewitt) + Enhancement (dilation)
+%   5) K-means Clustering
+%   6) Object Detection (Connected Components) + Thicker bounding boxes
+%   7) Turning the pear red
+%   8) Background Blurring
+%   9) Single-Figure Visualization (12 subplots)
+%
+% NOTE:
+%   - Adjust the HSV thresholds for your pear's color.
+%   - If needed, tweak morphological sizes and the "largest region" logic.
+%   - Ensure "fruit.jpg" (or your actual filename) is in your path.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+close all; clear; clc;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Fruit Image Analysis (Further Refined for the Yellow Pear)
+% Object of interest: The yellow pear
+%
+% 1) Preprocessing (read, resize)
+% 2) Color Space Conversions (RGB->HSV, YCbCr)
+% 3) Narrow HSV Threshold + Largest Connected Component
+% 4) Edge Detection (Sobel, Prewitt) + Dilation
+% 5) K-means Clustering
+% 6) Object Detection (Connected Components) + Thicker boxes
+% 7) Turn the Pear Red
+% 8) Background Blurring
+% 9) Single-Figure Visualization (12 subplots)
+%
+% NOTE:
+%   - Adjust the hue, saturation, value ranges, morphological sizes, and
+%     area thresholds to precisely isolate the pear in your image.
+%   - Ensure "fruit.jpg" (or your actual filename) is in your path.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+close all; clear; clc;
+
+%% 1) READ & RESIZE IMAGE
+originalImg = imread('fruits.jpg');  % Replace with your actual filename
+fruitImg = imresize(originalImg, [512 512]);
+grayFruit = rgb2gray(fruitImg);
+
+%% 2) COLOR SPACE CONVERSIONS
+hsvFruit   = rgb2hsv(fruitImg);
+ycbcrFruit = rgb2ycbcr(fruitImg);
+
+%% 3) REFINED COLOR SEGMENTATION FOR THE PEAR
+% Try slightly tighter hue bounds. If the pear is more/less orange or greenish,
+% shift these ranges accordingly.
+H = hsvFruit(:,:,1);  % Hue   in [0,1]
+S = hsvFruit(:,:,2);  % Sat   in [0,1]
+V = hsvFruit(:,:,3);  % Value in [0,1]
+
+% Updated narrower thresholds for a bright yellowish pear:
+%   Hue ~ [0.12, 0.16]
+%   Saturation >= 0.45
+%   Value >= 0.5
+BW_pear = (H >= 0.12 & H <= 0.16) & ...
+          (S >= 0.45) & ...
+          (V >= 0.5);
+
+% Morphological cleanup
+BW_pear = imclose(BW_pear, strel('disk', 5));  % unify pear region
+BW_pear = imfill(BW_pear, 'holes');            % fill holes
+BW_pear = bwareaopen(BW_pear, 50);             % remove small specks
+
+% Keep only the largest connected component
+CC_all = bwconncomp(BW_pear);
+if CC_all.NumObjects > 0
+    statsAll = regionprops(CC_all, 'Area', 'PixelIdxList');
+    [~, maxIdx] = max([statsAll.Area]);
+    BW_largest = false(size(BW_pear));
+    BW_largest(statsAll(maxIdx).PixelIdxList) = true;
+    BW_pear = BW_largest;
+end
+
+% Create an overlay image showing only the pear region
+colorSegmentedOverlayPear = fruitImg;
+colorSegmentedOverlayPear(repmat(~BW_pear, [1 1 3])) = 0;
+
+%% 4) EDGE DETECTION & ENHANCEMENT
+BW_sobel_fruit   = edge(grayFruit, 'sobel');
+BW_prewitt_fruit = edge(grayFruit, 'prewitt');
+BW_sobel_fruit_dilated = imdilate(BW_sobel_fruit, strel('disk', 1));
+
+%% 5) K-MEANS CLUSTERING
+numClusters = 3;
+[m, n, c] = size(fruitImg);
+pixelData = double(reshape(fruitImg, [], c));
+
+[idx, ~] = kmeans(pixelData, numClusters, 'Distance','sqEuclidean','Replicates',3);
+pixelLabels = reshape(idx, [m, n]);
+
+% Remove small noisy regions in each cluster
+cleanedLabels = zeros(size(pixelLabels));
+for i = 1:numClusters
+    clusterMask = (pixelLabels == i);
+    clusterMask = bwareaopen(clusterMask, 50);
+    cleanedLabels(clusterMask) = i;
+end
+pixelLabels = cleanedLabels;
+
+% Create a color-coded cluster image
+clusteredImgFruit = zeros(m, n, 3, 'uint8');
+colors = uint8(255 * lines(numClusters));
+for i = 1:numClusters
+    mask = (pixelLabels == i);
+    for ch = 1:3
+        temp = clusteredImgFruit(:,:,ch);
+        temp(mask) = colors(i,ch);
+        clusteredImgFruit(:,:,ch) = temp;
+    end
+end
+
+%% 6) OBJECT DETECTION (Connected Components)
+CC = bwconncomp(BW_pear);
+stats = regionprops(CC, 'BoundingBox', 'Centroid');
+
+% Draw thicker bounding boxes
+rectangles = [];
+for k = 1:length(stats)
+    rectangles = [rectangles; stats(k).BoundingBox];
+end
+
+objectDetectionOverlayPear = fruitImg;
+if ~isempty(rectangles)
+    objectDetectionOverlayPear = insertShape(fruitImg, 'Rectangle', rectangles, ...
+        'Color', 'green', 'LineWidth', 3);
+end
+
+% Mark centroids with red crosses
+centroids = [];
+for k = 1:length(stats)
+    centroids = [centroids; stats(k).Centroid];
+end
+if ~isempty(centroids)
+    objectDetectionOverlayPear = insertMarker(objectDetectionOverlayPear, centroids, ...
+        'x', 'Color', 'red', 'Size', 10);
+end
+
+%% 7) TURN THE PEAR RED
+pearRedOverlay = fruitImg;
+Rchan = pearRedOverlay(:,:,1);
+Gchan = pearRedOverlay(:,:,2);
+Bchan = pearRedOverlay(:,:,3);
+
+Rchan(BW_pear) = 255;
+Gchan(BW_pear) = 0;
+Bchan(BW_pear) = 0;
+
+pearRedOverlay(:,:,1) = Rchan;
+pearRedOverlay(:,:,2) = Gchan;
+pearRedOverlay(:,:,3) = Bchan;
+
+%% 8) BACKGROUND BLURRING
+blurredFruit = imgaussfilt(fruitImg, 10);
+fruitBackgroundBlurred = fruitImg;
+fruitBackgroundBlurred(~repmat(BW_pear, [1 1 3])) = ...
+    blurredFruit(~repmat(BW_pear, [1 1 3]));
+
+%% 9) SINGLE-FIGURE VISUALIZATION (12 Subplots)
+figure('Name','Refined Fruit Image Analysis','Position',[65 65 1000 700]);
+
+% (1) Original Image
+subplot(3,4,1);
+imshow(fruitImg);
+title('Original Image');
+
+% (2) HSV Image
+subplot(3,4,2);
+imshow(hsvFruit);
+title('HSV Image');
+
+% (3) YCbCr Image
+subplot(3,4,3);
+imshow(ycbcrFruit);
+title('YCbCr Image');
+
+% (4) Sobel Edges
+subplot(3,4,4);
+imshow(BW_sobel_fruit);
+title('Sobel Edges');
+
+% (5) Prewitt Edges
+subplot(3,4,5);
+imshow(BW_prewitt_fruit);
+title('Prewitt Edges');
+
+% (6) Enhanced Edges (Dilated)
+subplot(3,4,6);
+imshow(BW_sobel_fruit_dilated);
+title('Enhanced Edges');
+
+% (7) Refined Pear Mask
+subplot(3,4,7);
+imshow(BW_pear);
+title('Refined Pear Mask');
+
+% (8) Segmented Overlay (Pear Only)
+subplot(3,4,8);
+imshow(colorSegmentedOverlayPear);
+title('Segmented Overlay');
+
+% (9) K-means Segmentation
+subplot(3,4,9);
+imshow(clusteredImgFruit);
+title('K-means Segmentation');
+
+% (10) Object Detection
+subplot(3,4,10);
+imshow(objectDetectionOverlayPear);
+title('Object Detection');
+
+% (11) Pear Turned Red
+subplot(3,4,11);
+imshow(pearRedOverlay);
+title('Pear Turned Red');
+
+% (12) Background Blurred
+subplot(3,4,12);
+imshow(fruitBackgroundBlurred);
+title('Background Blurred');
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% END OF SCRIPT
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 
