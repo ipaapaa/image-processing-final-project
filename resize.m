@@ -19,8 +19,10 @@
 % Each image is processed separately and its results are displayed in a separate figure.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% -------------------- BIRD IMAGE ANALYSIS --------------------
+%% -------------------- BIRD IMAGE ANALYSIS -----------s---------
 close all; clear; clc;
+set(0, 'DefaultFigureWindowStyle', 'normal');
+set(0, 'DefaultFigurePosition', [100, 50, 1000, 700]);
 %--- BIRD IMAGE ---
 originalImg = imread('birdies.jpg');
 birdImg = imresize(originalImg, [512 512]);
@@ -107,7 +109,7 @@ birdBackgroundBlurred = birdImg;
 birdBackgroundBlurred(~repmat(BW_bird, [1 1 3])) = blurredBird(~repmat(BW_bird, [1 1 3]));
 
 % DISPLAY: 12 subplots for Bird Analysis
-figure('Name','Bird Image Analysis','Position',[50 50 1400 900]);
+figure('Name','Bird Image Analysis','Position',[50 50 1000 700]);
 subplot(3,4,1), imshow(birdImg), title('Original Image');
 subplot(3,4,2), imshow(hsvBird), title('HSV Image');
 subplot(3,4,3), imshow(ycbcrBird), title('YCbCr Image');
@@ -213,7 +215,7 @@ dogBackgroundBlurred = dogImg;
 dogBackgroundBlurred(~repmat(BW_dog, [1 1 3])) = blurredDog(~repmat(BW_dog, [1 1 3]));
 
 % DISPLAY: 12 subplots for Dog Analysis
-figure('Name','Dog Image Analysis','Position',[100 100 1400 900]);
+figure('Name','Dog Image Analysis','Position',[55 55 1000 700]);
 subplot(3,4,1), imshow(dogImg), title('Original Image');
 subplot(3,4,2), imshow(hsvDog), title('HSV Image');
 subplot(3,4,3), imshow(ycbcrDog), title('YCbCr Image');
@@ -313,7 +315,7 @@ landBackgroundBlurred = im2uint8((im2double(landscape) + im2double(blurredLand))
 landBackgroundBlurred = im2uint8((im2double(landscape) + im2double(blurredLand))/2);
 
 % DISPLAY: 12 subplots for Landscape Analysis
-figure('Name','Landscape Image Analysis','Position',[150 150 1400 900]);
+figure('Name','Landscape Image Analysis','Position',[60 60 1000 700]);
 subplot(3,4,1), imshow(landscape), title('Original Image');
 subplot(3,4,2), imshow(hsvLand), title('HSV Image');
 subplot(3,4,3), imshow(ycbcrLand), title('YCbCr Image');
